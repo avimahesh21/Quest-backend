@@ -1,11 +1,11 @@
 /**
  * types.ts
- * 
+ *
  * Standardized interfaces for each of the collections. Should be used in quest
  * and quest-backend to ensure that the data is consistent across the two.
  */
 
-import { Timestamp, GeoPoint } from "firebase-admin/firestore";
+import {Timestamp, GeoPoint} from "firebase-admin/firestore";
 
 export interface DailyQuest {
     questId: string;

@@ -1,6 +1,7 @@
 import {onRequest} from "firebase-functions/v2/https";
-import {getFirestore, Timestamp} from "firebase-admin/firestore";
+import {getFirestore, Timestamp, GeoPoint} from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
+import {getStorage} from "firebase-admin/storage";
 
 admin.initializeApp();
 
@@ -163,11 +164,6 @@ export const getUserData = onRequest((request, response) => {
     });
 });
 
-// export const getQuestCompleted = onRequest((request, response) => {
-//     const userId = request.query.userId as string;
-//     //check if most prev post was posted
-
-// });
 
 export const getPrevPostsFromUser = onRequest(async (request, response) => {
   const userId = request.query.userId as string;
@@ -210,40 +206,51 @@ export const getPrevPostsFromUser = onRequest(async (request, response) => {
   }
 });
 
-/**
- * Backend logic for submitting a quest. This doesn't work yet.
- */
-// const admin = require('firebase-admin');
-// const functions = require('firebase-functions');
-// export const submitQuest = onRequest(async (request: { body: { quest: any; }; }, response: { send: (arg0: string) => void; }) => {
-//   const { userId, questId, image, location } = request.body;
 
-//   // Validate the user's input
-//   if (!userId || !questId || !image) {
-//     response.send("Invalid input");
-//     return;
-//   }
+export const submitQuest = onRequest(async (request, response) => {
+  const {userId, imageData, latitude, longitude, note} = request.body;
+  if (!userId || !imageData || !latitude || !longitude || !note) {
+    response.status(400).send("Missing required fields");
+    return; // Ensure the function exits here
+  }
 
-//   const questRef = admin.firestore().collection('quests').doc(questId)
-//   const questDoc = await questRef.get();
+  const db = getFirestore();
+  const storage = getStorage(); // Corrected storage initialization
+  const bucket = storage.bucket("gs://quest-backend-edb3b.appspot.com");
 
-//   // Check if the quest exists
-//   if (!questDoc.exists) {
-//     response.send("Quest not found");
-//     return;
-//   }
-  
-//   // Add validation for the location in the future
+  // Create a reference to the image file in Firebase Storage
+  const imageRef = bucket.file(`questImages/${userId}/${Date.now()}`);
 
-//   // Save the image to Cloud Storage
-//   const submissionRef = admin.firestore().collection('submissions').doc();
-//   await submissionRef.set({
-//     userId,
-//     questId,
-//     image,
-//     location,
-//     timestamp: admin.firestore.FieldValue.serverTimestamp()
-//   });
+  try {
+    // Save the image to Firebase Storage
+    await imageRef.save(Buffer.from(imageData, "base64"), {
+      metadata: {contentType: "image/jpeg"}, // Adjust content type if necessary
+    });
 
-//   response.send("Submission successful");
-// });
+    // Get the URL of the stored image
+    const [imageUrl] = await imageRef.getSignedUrl({
+      action: "read",
+      expires: "03-09-2491", // Far future date
+    });
+
+    // Create the quest submission object
+    const questSubmission = {
+      UserID: userId,
+      PostID: db.collection("Posts").doc().id,
+      Date: Timestamp.now(),
+      ImageData: imageUrl,
+      LocationData: new GeoPoint(latitude, longitude),
+      Note: note,
+      Upvotes: 0,
+    };
+
+    // Add the quest submission to Firestore
+    await db.collection("Posts").doc(questSubmission.PostID).set(questSubmission);
+
+    // Send the created quest submission data back to the client
+    response.status(201).send(questSubmission);
+  } catch (error) {
+    console.error("Error submitting quest:", error);
+    response.status(500).send({error: "Failed to submit quest, please try again."});
+  }
+});
