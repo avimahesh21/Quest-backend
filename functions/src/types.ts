@@ -11,7 +11,7 @@ export interface DailyQuest {
     questId: string;
     startTime: Timestamp;
     description: string;
-    location: boolean; // If location quest, true; else, false
+    isLocation: boolean; // If location quest, true; else, false
 }
 
 export interface QuestSubmission {

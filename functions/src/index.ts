@@ -16,9 +16,9 @@ export const getQuest = onRequest((request, response) => {
   const todayStart = Timestamp.fromDate(today);
   const todayEnd = Timestamp.fromDate(tomorrow);
 
-  db.collection("Quests")
-    .where("timestamp", ">=", todayStart)
-    .where("timestamp", "<", todayEnd)
+  db.collection("DailyQuest")
+    .where("startTime", ">=", todayStart)
+    .where("startTime", "<", todayEnd)
     .get()
     .then((snapshot) => {
       const quests: any[] = [];
@@ -31,8 +31,8 @@ export const getQuest = onRequest((request, response) => {
       snapshot.forEach((doc) => {
         const quest = {
           id: doc.id,
-          description: doc.data().Desc,
-          timestamp: doc.data().timestamp.toDate(), // Assuming 'timestamp' is stored in Firestore
+          description: doc.data().description,
+          startTime: doc.data().startTime.toDate(), // Assuming 'timestamp' is stored in Firestore
         };
         quests.push(quest);
       });
@@ -58,9 +58,9 @@ export const getAllPosts = onRequest((request, response) => {
   const todayEnd = Timestamp.fromDate(tomorrow);
 
 
-  db.collection("Posts")
-    .where("Date", ">=", todayStart)
-    .where("Date", "<", todayEnd)
+  db.collection("QuestSubmission")
+    .where("submissionTime", ">=", todayStart)
+    .where("submissionTime", "<", todayEnd)
     .get()
     .then((snapshot) => {
       const posts: any[] = [];
@@ -72,13 +72,13 @@ export const getAllPosts = onRequest((request, response) => {
 
       snapshot.forEach((doc) => {
         const post = {
-          DatePosted: doc.data().Date,
-          ImageData: doc.data().ImageData,
-          LocationData: doc.data().LocationData,
-          Note: doc.data().Note,
-          PostID: doc.data().PostID,
-          Upvotes: doc.data().Upvotes,
-          UserID: doc.data().UserID,
+          submissionTime: doc.data().submissionTime,
+          imageUrl: doc.data().imageUrl,
+          location: doc.data().location,
+          note: doc.data().note,
+          PostID: doc.id,
+          votes: doc.data().votes,
+          userId: doc.data().userId,
         };
         posts.push(post);
       });
@@ -180,14 +180,14 @@ export const getPrevPostsFromUser = onRequest(async (request, response) => {
       return;
     }
 
-    const userPostsIds = userDocSnapshot.data()?.Posts;
+    const userPostsIds = userDocSnapshot.data()?.QuestSubmissions;
     if (!userPostsIds || !Array.isArray(userPostsIds)) {
       response.status(404).send({message: "No posts found for this user"});
       return;
     }
 
     const postsPromises = userPostsIds.map((postId: string) => {
-      return db.collection("Posts").doc(postId).get();
+      return db.collection("QuestSubmission").doc(postId).get();
     });
 
     const postsSnapshots = await Promise.all(postsPromises);
@@ -256,38 +256,37 @@ export const submitQuest = onRequest(async (request, response) => {
 });
 
 export const getQuestCompleted = onRequest(async (request, response) => {
-    const db = getFirestore();
-    const userId = request.query.userId as string;
-  
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to start of today
-  
-    const tommorow = new Date(today);
-    tommorow.setDate(tommorow.getDate() + 1);
-  
-    const todayStart = Timestamp.fromDate(today);
-    const todayEnd = Timestamp.fromDate(tommorow);
-  
-    db.collection("Posts")
-      .where("Date", ">=", todayStart)
-      .where("Date", "<", todayEnd)
-      .where("UserID", "==", userId)
-      .get()
-      .then((snapshot) => {
-        if (snapshot.empty) {
-          response.status(200).send({
-            completed: false,
-            message: "User has not completed a quest today.",
-          });
-          return;
-        }
+  const db = getFirestore();
+  const userId = request.query.userId as string;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Set to start of today
+
+  const tommorow = new Date(today);
+  tommorow.setDate(tommorow.getDate() + 1);
+
+  const todayStart = Timestamp.fromDate(today);
+  const todayEnd = Timestamp.fromDate(tommorow);
+
+  db.collection("QuestSubmission")
+    .where("submissionTime", ">=", todayStart)
+    .where("submissionTime", "<", todayEnd)
+    .where("userId", "==", userId)
+    .get()
+    .then((snapshot) => {
+      if (snapshot.empty) {
         response.status(200).send({
-          completed: true,
-          message: "User has completed a quest today.",
+          completed: false,
+          message: "User has not completed a quest today.",
         });
-      }).catch((error) => {
-        console.error("Error getting quest completion status: ", error);
-        response.status(500).send({error: error.message});
+        return;
+      }
+      response.status(200).send({
+        completed: true,
+        message: "User has completed a quest today.",
       });
-  });
-  
+    }).catch((error) => {
+      console.error("Error getting quest completion status: ", error);
+      response.status(500).send({error: error.message});
+    });
+});
