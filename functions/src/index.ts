@@ -211,11 +211,50 @@ export const getPrevPostsFromUser = onRequest(async (request, response) => {
 });
 
 /**
+ * Checks whether a user has completed a quest for today.
+ */
+export const getQuestCompleted = onRequest(async (request, response) => {
+  const db = getFirestore();
+  const userId = request.query.userId as string;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Set to start of today
+
+  const tommorow = new Date(today);
+  tommorow.setDate(tommorow.getDate() + 1);
+
+  const todayStart = Timestamp.fromDate(today);
+  const todayEnd = Timestamp.fromDate(tommorow);
+
+  db.collection("Posts")
+    .where("Date", ">=", todayStart)
+    .where("Date", "<", todayEnd)
+    .where("UserID", "==", userId)
+    .get()
+    .then((snapshot) => {
+      if (snapshot.empty) {
+        response.status(200).send({
+          completed: false,
+          message: "User has not completed a quest today.",
+        });
+        return;
+      }
+      response.status(200).send({
+        completed: true,
+        message: "User has completed a quest today.",
+      });
+    }).catch((error) => {
+      console.error("Error getting quest completion status: ", error);
+      response.status(500).send({error: error.message});
+    });
+});
+/**
  * Backend logic for submitting a quest. This doesn't work yet.
  */
 // const admin = require('firebase-admin');
 // const functions = require('firebase-functions');
-// export const submitQuest = onRequest(async (request: { body: { quest: any; }; }, response: { send: (arg0: string) => void; }) => {
+// export const submitQuest = onRequest(async (request: { body: { quest: any; };
+// }, response: { send: (arg0: string) => void; }) => {
 //   const { userId, questId, image, location } = request.body;
 
 //   // Validate the user's input
@@ -231,9 +270,7 @@ export const getPrevPostsFromUser = onRequest(async (request, response) => {
 //   if (!questDoc.exists) {
 //     response.send("Quest not found");
 //     return;
-//   }
-  
-//   // Add validation for the location in the future
+//   }//   // Add validation for the location in the future
 
 //   // Save the image to Cloud Storage
 //   const submissionRef = admin.firestore().collection('submissions').doc();
