@@ -230,22 +230,24 @@ export const submitQuest = onRequest(async (request, response) => {
     // Get the URL of the stored image
     const [imageUrl] = await imageRef.getSignedUrl({
       action: "read",
-      expires: "03-09-2491", // Far future date
+      expires: "03-09-2491",
     });
-
     // Create the quest submission object
     const questSubmission = {
-      UserID: userId,
-      PostID: db.collection("Posts").doc().id,
-      Date: Timestamp.now(),
-      ImageData: imageUrl,
-      LocationData: new GeoPoint(latitude, longitude),
-      Note: note,
-      Upvotes: 0,
+      userId: userId,
+      submissionId: db.collection("QuestSubmission").doc().id,
+      submissionTime: Timestamp.now(),
+      imageUrl: imageUrl,
+      location: new GeoPoint(latitude, longitude),
+      note: note,
+      votes: 0,
     };
 
-    // Add the quest submission to Firestore
-    await db.collection("Posts").doc(questSubmission.PostID).set(questSubmission);
+    await db.collection("QuestSubmission").doc(questSubmission.submissionId).set(questSubmission);
+
+    await db.collection("Users").doc(userId).update({
+      QuestSubmissions: admin.firestore.FieldValue.arrayUnion(questSubmission.submissionId),
+    });
 
     // Send the created quest submission data back to the client
     response.status(201).send(questSubmission);
