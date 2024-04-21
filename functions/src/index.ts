@@ -1,5 +1,5 @@
 import {onRequest} from "firebase-functions/v2/https";
-import {getFirestore, Timestamp, GeoPoint} from "firebase-admin/firestore";
+import {getFirestore, Timestamp, GeoPoint, FieldValue} from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 import {getStorage} from "firebase-admin/storage";
 
@@ -62,87 +62,109 @@ export const getAllPosts = onRequest((request, response) => {
     .where("submissionTime", ">=", todayStart)
     .where("submissionTime", "<", todayEnd)
     .get()
-    .then((snapshot) => {
-      const posts: any[] = [];
-
+    .then(async (snapshot) => { // Note the use of `async` here to use `await` inside
       if (snapshot.empty) {
         response.status(404).send({message: "No quests found for today."});
         return;
       }
 
-      snapshot.forEach((doc) => {
-        const post = {
-          submissionTime: doc.data().submissionTime,
-          imageUrl: doc.data().imageUrl,
-          location: doc.data().location,
-          note: doc.data().note,
-          postID: doc.id,
-          votes: doc.data().votes,
-          userId: doc.data().userId,
-        };
-        posts.push(post);
+      const userFetchPromises = snapshot.docs.map((doc) => {
+        const userData = doc.data();
+        // Fetch user display name from Firebase Authentication
+        return admin.auth().getUser(userData.userId)
+          .then((userRecord) => {
+            return {
+              submissionTime: userData.submissionTime.toDate(),
+              imageUrl: userData.imageUrl,
+              location: userData.location,
+              note: userData.note,
+              postID: doc.id,
+              votes: userData.votes,
+              userId: userData.userId,
+              userDisplayName: userRecord.displayName || "No Name", // Use displayName or default
+            };
+          })
+          .catch((error) => {
+            console.error("Error fetching user data:", error);
+            return {
+              submissionTime: userData.submissionTime.toDate(),
+              imageUrl: userData.imageUrl,
+              location: userData.location,
+              note: userData.note,
+              postID: doc.id,
+              votes: userData.votes,
+              userId: userData.userId,
+              userDisplayName: "Unknown", // Default if user fetch fails
+            };
+          });
       });
 
-      response.status(200).json(posts); // Send quests as JSON
+      const posts = await Promise.all(userFetchPromises);
+      response.send(posts.reverse());
     })
     .catch((error) => {
-      console.error("Error fetching posts: ", error);
-      response.status(500).send({error: error.message});
+      console.error("Failed to retrieve quests:", error);
+      response.status(500).send({error: "Failed to retrieve quests."});
     });
 });
 
 
-export const getTopUsersByVotes = onRequest((request, response) => {
+export const getTopUsersByVotes = onRequest(async (request, response) => {
   const db = getFirestore();
-  db.collection("Users")
-    .orderBy("Upvotes", "desc") // Order by 'upvotes' in descending order
-    .get()
-    .then((snapshot) => {
-      const users: any[] = [];
 
-      snapshot.forEach((doc) => {
+  db.collection("Users")
+    .orderBy("Upvotes", "desc")
+    .get()
+    .then(async (snapshot) => {
+      const users = [];
+
+      for (const doc of snapshot.docs) {
+        const userRecord = await admin.auth().getUser(doc.data().UserID);
         const user = {
           UserID: doc.data().UserID,
           Upvotes: doc.data().Upvotes,
           Streak: doc.data().Streak,
+          DisplayName: userRecord.displayName || "No Name",
         };
         users.push(user);
-      });
+      }
 
-      response.status(200).json(users); // Send sorted users as JSON
+      response.status(200).json(users);
     })
     .catch((error) => {
-      console.error("Error fetching users: ", error);
+      console.error("Error fetching users:", error);
       response.status(500).send({error: error.message});
     });
 });
 
 
-export const getTopUsersByStreaks = onRequest((request, response) => {
+export const getTopUsersByStreaks = onRequest(async (request, response) => {
   const db = getFirestore();
-  db.collection("Users")
-    .orderBy("Streak", "desc") // Order by 'upvotes' in descending order
-    .get()
-    .then((snapshot) => {
-      const users: any[] = [];
 
-      snapshot.forEach((doc) => {
+  db.collection("Users")
+    .orderBy("Streak", "desc")
+    .get()
+    .then(async (snapshot) => {
+      const users = [];
+
+      for (const doc of snapshot.docs) {
+        const userRecord = await admin.auth().getUser(doc.data().UserID);
         const user = {
           UserID: doc.data().UserID,
           Upvotes: doc.data().Upvotes,
           Streak: doc.data().Streak,
+          DisplayName: userRecord.displayName || "No Name",
         };
         users.push(user);
-      });
+      }
 
-      response.status(200).json(users); // Send sorted users as JSON
+      response.status(200).json(users);
     })
     .catch((error) => {
-      console.error("Error fetching users: ", error);
+      console.error("Error fetching users:", error);
       response.status(500).send({error: error.message});
     });
 });
-
 export const getUserData = onRequest((request, response) => {
   const userId = request.query.userId as string; // Access the userId query parameter
   if (!userId) {
@@ -311,6 +333,53 @@ export const createUser = onRequest(async (request, response) => {
     response.status(201).send({message: "User created successfully"});
   } catch (error: any) {
     console.error("Error creating user: ", error);
+    response.status(500).send({error: error.message});
+  }
+});
+
+export const likePost = onRequest(async (request, response) => {
+  const postId = request.query.postId as string;
+  const userId = request.query.userId as string;
+  if (!postId) {
+    response.status(400).send("Missing required fields: postId.");
+    return;
+  }
+  const db = getFirestore();
+  try {
+    const result = await db.collection("QuestSubmission").doc(postId).update({
+      votes: FieldValue.increment(1),
+    });
+
+    await db.collection("Users").doc(userId).update({
+      Upvotes: FieldValue.increment(1),
+    });
+
+    response.status(200).send({message: "Vote incremented successfully", result: result});
+  } catch (error: any) {
+    console.error("Error incrementing vote: ", error);
+    response.status(500).send({error: error.message});
+  }
+});
+
+export const dislikePost = onRequest(async (request, response) => {
+  const postId = request.query.postId as string;
+  const userId = request.query.userId as string;
+  if (!postId) {
+    response.status(400).send("Missing required fields: postId.");
+    return;
+  }
+  const db = getFirestore();
+  try {
+    const result = await db.collection("QuestSubmission").doc(postId).update({
+      votes: FieldValue.increment(-1),
+    });
+
+    await db.collection("Users").doc(userId).update({
+      Upvotes: FieldValue.increment(-1),
+    });
+    response.status(200).send({message: "Vote decremented successfully", result: result});
+  } catch (error: any) {
+    console.error("Error incrementing vote: ", error);
     response.status(500).send({error: error.message});
   }
 });
