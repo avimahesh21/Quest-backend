@@ -303,10 +303,10 @@ export const createUser = onRequest(async (request, response) => {
   const db = getFirestore();
   try {
     await db.collection("Users").doc(userId).set({
-      userId: userId,
-      streak: 0,
-      votes: 0,
-      submissions: [],
+      UserID: userId,
+      Streak: 0,
+      Upvotes: 0,
+      QuestSubmissions: [],
     });
     response.status(201).send({message: "User created successfully"});
   } catch (error: any) {
