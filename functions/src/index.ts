@@ -292,3 +292,25 @@ export const getQuestCompleted = onRequest(async (request, response) => {
       response.status(500).send({error: error.message});
     });
 });
+
+export const createUser = onRequest(async (request, response) => {
+  const userId = request.query.userId as string;
+  if (!userId) {
+    response.status(400).send("Missing required fields: userId.");
+    return;
+  }
+
+  const db = getFirestore();
+  try {
+    await db.collection("Users").doc(userId).set({
+      userId: userId,
+      streak: 0,
+      votes: 0,
+      submissions: [],
+    });
+    response.status(201).send({message: "User created successfully"});
+  } catch (error: any) {
+    console.error("Error creating user: ", error);
+    response.status(500).send({error: error.message});
+  }
+});
