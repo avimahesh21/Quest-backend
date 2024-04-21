@@ -221,7 +221,7 @@ export const getPrevPostsFromUser = onRequest(async (request, response) => {
       return {postId: postSnapshot.id, ...postSnapshot.data()};
     }).filter((post) => post !== null); // Remove nulls from the array of posts
 
-    response.status(200).json(posts);
+    response.status(200).json(posts.reverse());
   } catch (error: any) {
     console.error("Error fetching user's posts: ", error);
     response.status(500).send({error: error.message});
