@@ -76,7 +76,7 @@ export const getAllPosts = onRequest((request, response) => {
           imageUrl: doc.data().imageUrl,
           location: doc.data().location,
           note: doc.data().note,
-          PostID: doc.id,
+          postID: doc.id,
           votes: doc.data().votes,
           userId: doc.data().userId,
         };
